@@ -1,0 +1,15 @@
+
+const integer_value: int  = 10;
+const float_value: float  = 20.123;
+const character_value: char  = 'A;
+
+func do_something() {}
+
+func main() {
+   var boolean_value: bool = true;
+   if boolean_value {
+      do_something();
+   }
+}
+
+func printf(fmt: *const char, args...) : int;

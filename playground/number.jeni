@@ -1,0 +1,17 @@
+
+
+func dtb(x: int64) : int64 {
+    if x == 0 return 0;
+
+    var result: int64;
+    var place: int64 = 1;
+
+    while x > 0 {
+        const rem = x%2;
+        result += rem*place;
+        place  *= 10;
+        x /= 2;
+    }
+
+    return result;
+}
