@@ -50,6 +50,11 @@ namespace ast
             {}
         };
 
+        struct CString : Expression {
+            Sv value;
+            CString(Locus locus, Sv value) : Expression(locus, Expression_Kind::CString), value(value) {}
+        };
+
         struct Boolean : Expression {
             bool value;
 

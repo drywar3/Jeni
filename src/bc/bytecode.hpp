@@ -4,6 +4,7 @@
 #include "misc/densemap.hpp"
 #include "sema/entities/id.hpp"
 #include "sema/entities/symbols.hpp"
+#include "bc/stack_slot.hpp"
 
 struct Compiler_Context;
 namespace bc {
@@ -69,38 +70,57 @@ namespace bc {
         void add_function(sema::Symbol_Id, Bytecode_Function*);
         bool contains_function(sema::Symbol_Id);
 
+        bool contains_sequence_of_bytes(const uint8 *bytes, usize count);
+        uint32 find_or_insert_bytes_to_data_section(const uint8 *bytes, usize count);
+        void append_to_data_section(const uint8 *byte, usize count);
+
         String emit_to_c_code(Compiler_Context &compiler);
     };
 
     enum Opcode {
-        LOAD_PARAM,
-        LOAD_CONSTANT,
+        LOAD_PARAM,      // load_param T, <stack_slot>
+        LOAD_CONSTANT,   // load_constant T, <name>
+        LOAD_STACK,      // load_stack T, <stack_slot>, <stack_offset>
+
+        // allocate memory on the stack
+        // - [dst]  unused
+        // - [arg1] stack_offset | 0 - if stack_slot is used
+        // - [arg2] stack_slot   | 0 - if stack_offset is used
+        // - [arg3] unused
+        ALLOC_STACK,
+
+        LOAD_DATA,
+
         STORE_REG,
         STORE_REG_IMM,
+        // store a value into a stack slot/offset
+        // - [dst]  unused
+        // - [arg1] value to store
+        // - [arg2] stack_offset | 0 - if stack_slot is used
+        // - [arg3] stack_slot   | 0 - if stack_offset is used
+        STORE_STACK,
         RETURN,
         PREP_CALL,
         LOAD_ARG,
         DO_CALL,
     };
 
+
+    using Reg = int64_t;
+
     struct Bytecode_Instruction {
         Opcode opcode;
         Opt<sema::Type_Id> type_id;
-        uint32 dst;
-        uint32 arg1;
-        uint32 arg2;
+        int64  dst = -1;
+        Reg arg1;
+        Reg arg2;
+        Reg arg3;
         int64  imm;
         Sv     str;
     };
 
     enum {
         BCFN_IS_EXTERNALLY_DEFINED = 0x1,
-    };
-
-    struct Stack_Slot {
-        sema::Type_Id type_id;
-        usize         index;
-        usize         offset;
     };
 
     struct Call_Frame {
@@ -126,11 +146,11 @@ namespace bc {
         void destroy();
 
         void add_instruction(Bytecode_Instruction instruction);
-        void emit(Opcode op, Opt<sema::Type_Id> type_id, uint32 dst = 0, uint32 a1 = 0, uint32 a2 = 0, int64 imm = 0, Sv str = "");
+        void emit(Opcode op, Opt<sema::Type_Id> type_id, Reg dst = 0, Reg a1 = 0, Reg a2 = 0, Reg a3 = 0, int64 imm = 0, Sv str = "");
 
-        uint32 get_register();
+        int64 get_register();
+        void   free_register(int64 reg);
+
         uint32 alloc_stack_slot(sema::Type_Id type_id);
     };
-
-
 }

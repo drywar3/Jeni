@@ -442,7 +442,6 @@ class HashMap {
         std::size_t idx = get_bucket_index(key, capacity_);
         Node *current   = buckets_[idx];
         Node *prev      = nullptr;
-
         while (current) {
             if (current->key == key) {
                 if (prev) {

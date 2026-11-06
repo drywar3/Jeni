@@ -1,8 +1,32 @@
 
-func add(a: int, b: int) : int {
-   return 100;
+
+func hello() {
+    putchar(72);
+    putchar(101);
+    putchar(108);
+    putchar(108);
+    putchar(111);
+    putchar(44);
+    putchar(32);
+    putchar(87);
+    putchar(111);
+    putchar(114);
+    putchar(108);
+    putchar(100);
+    putchar(33);
+    putchar(10);
 }
 
 func main() : int {
-     return add(10, 10);
+    hello();
+    hello();
+    hello();
+    hello();
+    hello();
 }
+
+func world(x: int) {
+    putchar(x);
+}
+
+func putchar(x: int);

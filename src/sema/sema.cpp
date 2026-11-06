@@ -36,6 +36,8 @@ Semantic_Context::Semantic_Context(Semantic_Id id, Source_Id source_id, Compiler
     current_scope = global_scope;
 }
 
+Worker_Status check_statement_worker (Semantic_Context &sema, void *payload, bool is_resumption);
+
 bool sema::Semantic_Context::analyze()
 {
     auto &program = *compiler->programs.find(source_id);
@@ -44,17 +46,28 @@ bool sema::Semantic_Context::analyze()
         if (!discover_statement(stmt)) return false;
     }
 
-    for (ast::Statement *stmt : program.ast.iter()) {
+    for (auto stmt : program.ast.iter()) {
         auto *node = static_cast<Node*>(stmt);
         node->sema_id = id;
-        Worker_Status status = check_statement(Worker_Payload(stmt), false);
+        Worker_Status status = check_statement(stmt, false);
         if (!status) {
             if (status == Worker_Status::Failed) {
                 if (compiler->diagnostics.has_reached_max_errors()) return false;
                 else continue;
-            } else todo();
+            } else {
+                for (const auto symbol_id : status.waiting_on.iter()) {
+                    add_worker(symbol_id, Worker(id, status.working_scope, stmt, check_statement_worker));
+                }
+            };
         }
     }
+
+    while (!workers.empty()) {
+        for (auto &[symbol_id, _, _] : workers) {
+            wake_up_workers(symbol_id);
+        }
+    }
+
     return !compiler->diagnostics.has_errors();
 }
 

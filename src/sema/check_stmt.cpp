@@ -29,9 +29,14 @@ bool expression_is_global_compat(Semantic_Context &sema, const ast::Expression *
 }
 
 
-Worker_Status Semantic_Context::check_statement (Worker_Payload payload, bool is_resumption)
+Worker_Status check_statement_worker (Semantic_Context &sema, void *payload, bool is_resumption)
 {
-    auto &stmt = payload.get_stmt();
+    return sema.check_statement(payload, is_resumption);
+}
+
+Worker_Status Semantic_Context::check_statement(void *payload, bool is_resumption)
+{
+    auto stmt = static_cast<ast::Statement*>(payload);
     switch (stmt->kind) {
         case ast::Statement_Kind::Variable:      return check_variable_declaration(stmt, is_resumption);
         case ast::Statement_Kind::Function:      return check_function_declaration(stmt, is_resumption);
@@ -40,10 +45,10 @@ Worker_Status Semantic_Context::check_statement (Worker_Payload payload, bool is
         case ast::Statement_Kind::Return:        return check_return_statement(stmt, is_resumption);
         case ast::Statement_Kind::Expression:
             {
-                auto *expr = (ast::Expression**)(&stmt);
-                return check_expression(Worker_Payload(*expr), is_resumption);
+                auto expr = static_cast<ast::Expression*>(stmt);
+                return check_expression(expr, is_resumption);
             } break;
-        default: MINI_TODO();
+        default: MINI_TODO("%d", stmt->kind);
     }
 }
 
@@ -75,9 +80,9 @@ Worker_Status Semantic_Context::check_variable_declaration(ast::Statement *stmt,
 
     // @Todo : variable may be uninitialized. i do not check that it is here!
     if (variable->type_is_defined) {
-        auto status = check_expression(Worker_Payload(typehint), false);
+        auto status = check_expression(typehint, false);
         if (!status) return status;
-        status = check_expression(Worker_Payload(initializer), is_resumption);
+        status = check_expression(initializer, is_resumption);
         if (!status) return status;
 
         Type_Id expected_type = get_type_at_locus(typehint->locus);
@@ -94,7 +99,7 @@ Worker_Status Semantic_Context::check_variable_declaration(ast::Statement *stmt,
         symbol->type_id  = expected_type;
         set_type_at_locus(var_loc, expected_type);
     } else {
-        auto status = check_expression(Worker_Payload(initializer), is_resumption);
+        auto status = check_expression(initializer, is_resumption);
         if (!status) return status;
         auto inferred_type = get_type_at_locus(initializer->locus);
         var_sym->type_id   = inferred_type;
@@ -105,6 +110,7 @@ Worker_Status Semantic_Context::check_variable_declaration(ast::Statement *stmt,
     if (current_scope == global_scope) {
         if (!expression_is_global_compat(*this, initializer)) {
             compiler->report_error(initializer->locus, "Cannot use expression in global context", NON_CONST_GLOB_EXPR);
+            symbol->state = Symbol_State::Failed;
             return Worker_Status::Failed;
         }
     }
@@ -158,21 +164,50 @@ Worker_Status check_function_prototype(
     return Worker_Status::Done;
 }
 
+Worker_Status check_function_declaration_worker(Semantic_Context &sema, void *payload, bool is_resumption)
+{
+    auto stmt = static_cast<ast::Statement*>(payload);
+    auto function = static_cast<Function_Declaration*>(stmt);
+    auto ptr      = sema.store->symbols.find(function->name.locus);
+
+    assert(ptr != nullptr, "Compiler Bug: missing symbol");
+    auto symbol = *ptr;
+    assert(symbol->kind() == Symbol_Kind::Function_Set, "Compiler Bug: symbol referring to function is not a function set");
+    auto symbol_id = Symbol_Id(*sema.store->symbols.get_id(function->name.locus));
+
+
+    symbol->state = Symbol_State::Resolved;
+    if (function->body) {
+        Worker_Status body_status = sema.check_statement(function->body, false);
+        if (!body_status) {
+            if (body_status == Worker_Status::Failed) {
+                symbol->state = Symbol_State::Failed;
+            } else symbol->state = Symbol_State::Unresolved;
+            return body_status;
+        }
+    }
+
+    auto prototype = sema.store->prots[stmt->locus];
+
+    // The function is fully resolved at this point.
+    // It should be safe to generate the bytecode for it now.
+    sema.compiler->bc.compile_function_decl_to_bytecode(Symbol_Proxy(&sema, symbol_id), function, prototype);
+
+    sema.wake_up_workers(symbol_id);
+
+    return Worker_Status::Done;
+}
+
 Worker_Status Semantic_Context::check_function_declaration(ast::Statement *stmt, bool is_resumption)
 {
     auto function = static_cast<Function_Declaration*>(stmt);
-
     if (!is_resumption) {
-        auto save = this->current_scope;
-        this->current_scope = current_scope;
-
-        defer { this->current_scope = save; };
-
         if (!discover_statement(stmt)) return Worker_Status::Failed;
     }
 
     auto opt    = find_symbol(function->name.value);
     assert(opt.has_value(), "Compiler Bug: missing symbol");
+
     auto symbol = *opt;
     assert(symbol->kind() == Symbol_Kind::Function_Set, "Compiler Bug: symbol referring to function is not a function set");
 
@@ -181,14 +216,20 @@ Worker_Status Semantic_Context::check_function_declaration(ast::Statement *stmt,
     auto &ast_prototype = function->prototype;
 
     enter_scope(Scope::Function);
-    defer { exit_scope(); };
-
-
     enter_scope(Scope::Parameter); // Enter a separate scope for the function parameters.
-    defer { exit_scope(); };
+
+    defer {
+        exit_scope();
+        exit_scope();
+    };
 
     sema::Function_Prototype prototype{allocator};
-    if (auto s = check_function_prototype(*this, ast_prototype, symbol, prototype); !s) return s;
+    if (auto s = check_function_prototype(*this, ast_prototype, symbol, prototype); !s) {
+        symbol->state = (s == Worker_Status::Failed)
+                      ? Symbol_State::Failed
+                      : Symbol_State::Unresolved;
+        return s;
+    }
 
     if (func_set->map.contains(prototype)) {
         auto prev = func_set->map[prototype];
@@ -215,20 +256,34 @@ Worker_Status Semantic_Context::check_function_declaration(ast::Statement *stmt,
     });
 
     symbol->state = Symbol_State::Resolved;
+    set_symbol_at_locus(function->name.locus, symbol.symbol_id);
+    store->prots[stmt->locus] = prototype;
 
     if (function->body) {
         Worker_Status body_status = check_statement(function->body, false);
         if (!body_status) {
-            if (body_status == Worker_Status::Pending) todo();
-            else return body_status;
+            if (body_status == Worker_Status::Pending) {
+                for (const auto symbol_id : body_status.waiting_on.iter()) {
+                    add_worker(symbol_id, Worker(id,
+                                                 body_status.working_scope,
+                                                 stmt,
+                                                 check_function_declaration_worker));
+                }
+                symbol->state = Symbol_State::Unresolved;
+                return Worker_Status::pending(allocator);
+            } else if (body_status == Worker_Status::Failed) {
+                symbol->state = Symbol_State::Failed;
+                return body_status;
+            }
         }
     }
-    set_symbol_at_locus(function->name.locus, symbol.symbol_id);
-    store->prots[stmt->locus] = prototype;
 
     // The function is fully resolved at this point.
     // It should be safe to generate the bytecode for it now.
     compiler->bc.compile_function_decl_to_bytecode(symbol, function, prototype);
+
+    wake_up_workers(symbol.get_id());
+
     return Worker_Status::Done;
 }
 
@@ -249,11 +304,10 @@ Worker_Status Semantic_Context::check_block_statement(ast::Statement *stmt, bool
     for (usize n = start; n < block->body.count(); n++) {
         store->bsp[stmt->locus] = n;
         auto &stmt = block->body[n];
-        bool stmt_is_resumption = is_resumption and (n == start);
+        bool stmt_is_resumption = is_resumption and(n == start);
         Worker_Status status = check_statement(stmt, stmt_is_resumption);
         if (!status) {
-            if (status == Worker_Status::Pending) todo();
-            else return status;
+            return status;
         }
     }
 

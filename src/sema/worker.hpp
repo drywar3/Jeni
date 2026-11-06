@@ -6,6 +6,7 @@
 #include "misc/misc.hpp"
 #include "sema/entities/id.hpp"
 #include "sema/sema_id.hpp"
+#include "sema/store.hpp"
 
 namespace sema
 {
@@ -36,52 +37,64 @@ namespace sema
             return status;
         }
 
+        static Worker_Status pending(Alloc a)
+        {
+            auto status = Worker_Status(Pending);
+            status.waiting_on = Arr<Symbol_Id>(a);
+            return status;
+        }
+
+
+        operator Status() const { return status; }
+
         operator bool() const { return status == Done; }
     };
 
-    struct Worker_Payload {
-        enum Kind {
-            Statement,
-            Expression,
-        };
-
-        Kind kind;
-        void *data;
-
-        Worker_Payload(ast::Statement *&stmt)
-            : kind(Statement), data(&stmt) {}
-
-        Worker_Payload(ast::Expression *&expr)
-            : kind(Expression), data(&expr) {}
-
-        ast::Expression *&get_expr()
-        {
-            MINI_ASSERT(kind == Expression, "payload is not an expression");
-            return *((ast::Expression**)data);
-        }
-
-        ast::Statement *&get_stmt()
-        {
-            MINI_ASSERT(kind == Statement, "payload is not an statement");
-            return *((ast::Statement**)data);
-        }
-    };
+    // struct Worker_Payload {
+    //     enum Kind {
+    //         Statement,
+    //         Expression,
+    //     };
+    //
+    //     Kind kind;
+    //     void *data;
+    //
+    //     Worker_Payload(ast::Statement **stmt)
+    //         : kind(Statement), data(stmt) {}
+    //
+    //     Worker_Payload(ast::Expression **expr)
+    //         : kind(Expression), data(expr) {}
+    //
+    //     ast::Expression **get_expr()
+    //     {
+    //         MINI_ASSERT(kind == Expression, "payload is not an expression");
+    //         return static_cast<ast::Expression**>(data);
+    //     }
+    //
+    //     ast::Statement **get_stmt()
+    //     {
+    //         MINI_ASSERT(kind == Statement, "payload is not an statement");
+    //         return static_cast<ast::Statement**>(data);
+    //     }
+    // };
 
     using Worker_Function =
-        auto (*) (Semantic_Context&, Worker_Payload, bool first_pass) -> Worker_Status;
+        auto (*) (Semantic_Context&, void*, bool is_resumption) -> Worker_Status;
 
     struct Worker {
         Semantic_Id semantic_id;
         Scope_Id    scope_id;
-        Worker_Payload payload;
+        void *payload;
         Worker_Function function;
 
         Worker(Semantic_Id sema_id,
                Scope_Id scope_id,
-               Worker_Payload payload,
+               void *payload,
                Worker_Function function)
             : semantic_id(sema_id), scope_id(scope_id), payload(payload),
               function(function)
         {}
+
+        Worker_Status resume(Semantic_Storage *store);
     };
 }

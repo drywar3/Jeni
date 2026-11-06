@@ -1,0 +1,34 @@
+
+func putchar(x: uint8);
+
+func foo(x: uint8) : uint8 {
+    return x;
+}
+
+func hello () {
+    putchar('");
+    putchar('H);
+    putchar('e);
+    putchar('l);
+    putchar('l);
+    putchar('o);
+    putchar(',);
+    putchar(' );
+    putchar('W);
+    putchar('o);
+    putchar('r);
+    putchar('l);
+    putchar('d);
+    putchar('!);
+    putchar('");
+}
+
+
+func main() : int {
+    puts(c"Hello, World!");
+    printf(c"Hello World %d", 1);
+    return 10;
+}
+
+func puts(fmt: *const uint8) : int;
+func printf(fmt: *const uint8, args...) : int;

@@ -26,7 +26,7 @@ struct Token_Spec {
 using Token_List = std::initializer_list<Token_Spec>;
 
 static const Token_List KEYWORDS = {
-    {"func", KW_Func},         {"return", KW_Return},
+    {"func", KW_Func},         {"function", KW_Func},
     {"const", KW_Const},       {"var", KW_Var},
     {"if", KW_If},             {"then", KW_Then},
     {"else", KW_Else},         {"for", KW_For},
@@ -35,10 +35,10 @@ static const Token_List KEYWORDS = {
     {"ns", KW_Namespace},      {"namespace", KW_Namespace},
     {"struct", KW_Struct},     {"type", KW_Type},
     {"enum", KW_Enum},         {"using", KW_Using},
-    {"move", KW_Move},
+    {"return", KW_Return},     {"move", KW_Move},
 
     {"int", TK_Int},           {"int8", TK_Int8},
-    {"uint8", TK_Uchar},       {"int16", TK_Int16},
+    {"uint8", TK_Uint8},       {"int16", TK_Int16},
     {"int32", TK_Int},         {"int64", TK_Int64},
     {"uint", TK_Uint},         {"uint64", TK_Uint64},
     {"usize", TK_Usize},       {"bool", TK_Bool},
@@ -236,7 +236,7 @@ auto parser::Lexer::next_token() -> Expect<Token, Diagnostic>
 
         if (eat_prefix(this, "/*")) {
             usize count = 1;
-            while (!is_done()) {
+            while (!is_done() and count > 0) {
                 if (eat_prefix(this, "/*")) {
                     count += 1;
                 } else if (eat_prefix(this, "*/")) {
@@ -262,7 +262,7 @@ auto parser::Lexer::next_token() -> Expect<Token, Diagnostic>
     if (is_prefix(this, "c\"")) {
         next(this);
         next(this);
-        while (!is_done()) {
+        while (!is_done() and current(this) != '"') {
             next(this);
         }
         next(this);
@@ -286,13 +286,11 @@ auto parser::Lexer::next_token() -> Expect<Token, Diagnostic>
 
     if (current(this) == '\'') {
         next(this);
-        if (!codepoint_isalpha(current(this))) {
-            return Unexpect(Diagnostic::Error(allocator, lexer_get_locus(this), "Expected a character after `'`")
-                   .with_code(UNEXPECTED_CHAR));
-        }
         next(this);
         if (current(this) == '\'') {
-            return Unexpect(Diagnostic::Error(allocator, lexer_get_locus(this), "Unexpected character after character literal `'`")
+            next(this);
+
+            return Unexpect(Diagnostic::Error(allocator, lexer_get_locus(this), "In Jeni, character literals do not have a closing `'`")
                    .with_code(INVALID_CHAR_LITERAL));
         }
         return Token(LIT_Char, lexer_get_locus(this));

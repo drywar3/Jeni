@@ -2,6 +2,7 @@
 #include "sema/store.hpp"
 #include "sema/type/id.hpp"
 #include "sema/entities/symbols.hpp"
+#include "sema/entities/type.hpp"
 #include "compiler.hpp"
 
 #define TAB "    "
@@ -12,8 +13,8 @@ using namespace bc;
 
 struct Call_Context {
     Type_Id result_type_id;
-    uint32 result_register;
-    uint32 callee_register;
+    int64 result_register;
+    int64 callee_register;
     Arr<std::pair<uint32, Type_Id>> args;
 };
 
@@ -45,7 +46,7 @@ void emit_std_headers(Context &c)
 
 void emit_register_type(Context &c)
 {
-    emit(c, "struct _Register {\n");
+    emit(c, "union _Register {\n");
     emit(c, "    int64_t int_value;\n");
     emit(c, "    double  float_value;\n");
     emit(c, "    char   *pointer_value;\n");
@@ -57,12 +58,26 @@ String Bytecode_Machine::emit_to_c_code(Compiler_Context &compiler)
     Context c{allocator, compiler};
     emit_std_headers(c);
     c.swap(c.definitions);
+    emit(c, "extern unsigned char jeni_data_section[];\n");
     emit_register_type(c);
     c.swap(c.code);
     for (auto function : functions) {
         emit_function(c, this, function);
     }
     c.headers.append_fmt("%s\n%s", c.definitions.data(), c.code.data());
+
+    c.headers.append_fmt("\nunsigned char jeni_data_section[] = {");
+
+    usize n = 0;
+    for (uint8 byte : data_section.iter()) {
+        if (n != 0) c.headers.append_fmt(", ");
+        c.headers.append_fmt("0x%x", byte);
+        n += 1;
+    }
+
+    c.headers.append_fmt("};\n");
+
+
     return c.headers;
 }
 
@@ -73,7 +88,18 @@ void emit_type(Context &c, sema::Type_Id type_id)
     switch (type->kind) {
     case Type::Kind::Error:     MINI_UNREACHABLE();
     case Type::Kind::Int32:     emit(c, "int");   break;
+    case Type::Kind::Uint8:     emit(c, "unsigned char");   break;
     case Type::Kind::Void:      emit(c, "void");  break;
+    case Type::Kind::Pointer:
+        {
+            auto pointer = static_cast<Pointer_Type*>(type);
+            if (bool(pointer->access)) {
+                emit(c, "const ");
+            }
+            emit_type(c, pointer->inner);
+            emit(c, "*");
+            break;
+        }
     case Type::Kind::Function:
         {
             auto prot = static_cast<Function_Prototype*>(type);
@@ -139,6 +165,15 @@ void emit_instruction(Context &c, Bytecode_Machine *m, Bytecode_Instruction &ins
             emit_register(c, reg_type, reg, true);
             emit(c, " = %d;\n", value);
         } break;
+    case STORE_STACK:
+        {
+            auto type  = *inst.type_id;
+            auto reg   = inst.arg1;
+            auto index = inst.arg3;
+            emit(c, TAB"*sp%lld = ", index);
+            emit_register(c, type, reg);
+            emit(c, ";\n");
+        } break;
     case PREP_CALL:
         {
             auto result_type = *inst.type_id;
@@ -168,8 +203,13 @@ void emit_instruction(Context &c, Bytecode_Machine *m, Bytecode_Instruction &ins
             auto callee_type = *inst.type_id;
 
             emit(c, TAB);
-            emit_register(c, call.result_type_id, call.result_register, true);
-            emit(c, " = (");
+
+            if (call.result_register >= 0) {
+                emit_register(c, call.result_type_id, call.result_register, true);
+                emit(c, " = ");
+            }
+
+            emit(c, "(");
             emit_register(c, callee_type, call.callee_register);
             emit(c, ")(");
             usize n = 0;
@@ -188,6 +228,34 @@ void emit_instruction(Context &c, Bytecode_Machine *m, Bytecode_Instruction &ins
             emit(c, TAB);
             emit_register(c, constant_type, result_reg, true);
             emit(c, " = (char*)%.*s;\n", SVARG(constant_name.base()));
+        } break;
+    case LOAD_STACK:
+        {
+            auto type  = *inst.type_id;
+            auto dst   = inst.dst;
+            auto index = inst.arg1;
+            emit(c, TAB);
+            emit_register(c, type, dst, true);
+            emit(c, " = (");
+            emit_type(c, type);
+            emit(c, ")*sp%lld;\n", index);
+        } break;
+
+    case LOAD_DATA:
+        {
+            auto type = *inst.type_id;
+            auto dst  = inst.dst;
+            auto offset = inst.arg1;
+            emit(c, TAB);
+            emit_register(c, type, dst, true);
+            emit(c, " = (char*)&jeni_data_section[%lld];\n", offset);
+        } break;
+
+    case ALLOC_STACK:
+        {
+            auto index = inst.arg2;
+            emit(c, TAB);
+            emit(c, "auto sp%lld = &sp%lld_slot;\n", index, index);
         } break;
     default: todo();
     }
@@ -222,6 +290,10 @@ void emit_function(Context &c, Bytecode_Machine *m, Bytecode_Function *fn)
 {
     Symbol *symbol = c.cc.store.symbols.at_index(usize(fn->id));
     Prototype prot = fn->prototype;
+
+    bool is_extern_defn = fn->flags & BCFN_IS_EXTERNALLY_DEFINED;
+
+    emit(c, "extern \"C\" ");
     emit_type(c, prot.return_type);
     emit(c, " %s(", fn->name.data());
 
@@ -231,7 +303,7 @@ void emit_function(Context &c, Bytecode_Machine *m, Bytecode_Function *fn)
         emit(c, " p%zu", n);
     }
     emit(c, ")");
-    if (fn->flags & BCFN_IS_EXTERNALLY_DEFINED) emit(c, ";");
+    if (is_extern_defn) emit(c, ";\n");
     else {
         emit(c, "\n{\n");
         emit_function_prelude(c, fn);

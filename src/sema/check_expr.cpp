@@ -22,6 +22,7 @@ Worker_Status check_call_against_function_set(
     Symbol_Proxy  symbol
 ) {
     auto function_set = static_cast<Function_Set*>(*symbol);
+
     sema::Function_Prototype prototype{sema.allocator};
     for (auto argument : function_call->args.iter()) {
         Type_Id type_id = sema.get_type_at_locus(argument.value->locus);
@@ -44,6 +45,7 @@ Worker_Status check_call_against_function_set(
 
     auto function = function_set->map[prototype];
     prototype.return_type = function.return_type;
+
     sema.set_type_at_locus(function_call->locus, function.return_type);
     sema.store->prots.insert(function_call->locus, prototype);
 
@@ -54,20 +56,20 @@ Worker_Status check_call_against_function_set(
     return Worker_Status::Done;
 }
 
-Worker_Status check_function_call(Semantic_Context &sema, Expression *&expr)
+Worker_Status check_function_call(Semantic_Context &sema, Expression *expr)
 {
     assert(expr->kind == Expression_Kind::Function_Call, "Compiler Bug: expected a function call expression");
 
     auto function_call = static_cast<Function_Call*>(expr);
-    auto &callee       = function_call->callee;
-    auto &args         = function_call->args;
+    auto callee         = function_call->callee;
+    auto args           = function_call->args;
 
-    Worker_Status status = sema.check_expression(Worker_Payload(callee), false);
+    Worker_Status status = sema.check_expression(callee, false);
     if (!status) return status;
 
     for (auto &argument : args.iter()) {
         if (argument.name) todo("Handle named arguments");
-        Worker_Status arg_status = sema.check_expression(Worker_Payload(argument.value), false);
+        Worker_Status arg_status = sema.check_expression(argument.value, false);
         if (!arg_status) return arg_status;
     }
 
@@ -103,10 +105,12 @@ Worker_Status check_identifier(Semantic_Context &sema, Expression *&expr)
                 sema.set_symbol_at_locus(ident->locus, symbol.get_id());
                 // @TODO: assert that the symbol does indeed have a type.
                 sema.set_type_at_locus(ident->locus, *symbol->type_id);
+                return Worker_Status::Done;
             } break;
+        case Symbol_State::Failed: return Worker_Status::Failed;
         default: todo();
         }
-        return Worker_Status::Done;
+        MINI_UNREACHABLE();
     }
 
     sema.compiler->report_error(
@@ -117,9 +121,9 @@ Worker_Status check_identifier(Semantic_Context &sema, Expression *&expr)
     return Worker_Status::Failed;
 }
 
-Worker_Status Semantic_Context::check_expression(Worker_Payload payload, bool is_resumption)
+Worker_Status Semantic_Context::check_expression(void *payload, bool is_resumption)
 {
-    auto &expr = payload.get_expr();
+    auto expr = static_cast<ast::Expression*>(payload);
     switch (expr->kind) {
         case Expression_Kind::Integer:
             {
@@ -146,6 +150,13 @@ Worker_Status Semantic_Context::check_expression(Worker_Payload payload, bool is
                 auto char_expr = static_cast<Char*>(expr);
                 (void)char_expr;
                 set_type_at_locus(expr->locus, type_id::UINT8);
+                return Worker_Status::Done;
+            } break;
+        case Expression_Kind::CString:
+            {
+                auto cstr_expr = static_cast<CString*>(expr);
+                (void)cstr_expr;
+                set_type_at_locus(expr->locus, register_or_insert_type(store->char_pointer_type));
                 return Worker_Status::Done;
             } break;
         case Expression_Kind::Boolean:

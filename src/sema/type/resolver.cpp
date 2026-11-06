@@ -26,6 +26,7 @@ Worker_Status Type_Resolver::resolve_pointer_type()
                 return Worker_Status::Done;
             }
         }
+        n += 1;
     }
 
     Type_Id pointer_type_id = sema.register_or_insert_type(

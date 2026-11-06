@@ -48,5 +48,12 @@ int main (int argc, char **argv) {
 
     printf("INFO: wrote generated c to `%s`\n", out_path.data());
 
+    auto command = String::build(allocator, "cc /usr/lib/rcrt1.o -xc++ -w %s -o a.out -nostdlib -lc", out_path.data());
+    printf("RUN: %s\n", command.data());
+    if (system(command.data())) {
+
+        return 1;
+    }
+
     return 0;
 }

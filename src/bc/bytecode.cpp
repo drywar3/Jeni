@@ -43,12 +43,12 @@ void Bytecode_Function::add_instruction(Bytecode_Instruction instruction)
     instructions.append(instruction);
 }
 
-void Bytecode_Function::emit(Opcode op, Opt<sema::Type_Id> type_id, uint32 dst, uint32 a1, uint32 a2, int64 imm, Sv str)
+void Bytecode_Function::emit(Opcode op, Opt<sema::Type_Id> type_id, int64 dst, Reg a1, Reg a2, Reg a3, int64 imm, Sv str)
 {
-    add_instruction({op, type_id, dst, a1, a2, imm, str});
+    add_instruction({op, type_id, dst, a1, a2, a3, imm, str});
 }
 
-uint32 Bytecode_Function::get_register()
+int64 Bytecode_Function::get_register()
 {
     for (uint32 n = 0; n < registers.count(); n++) {
         if (registers[n]) {
@@ -64,4 +64,36 @@ uint32 Bytecode_Function::alloc_stack_slot(sema::Type_Id type_id)
     usize index = stack_slots.count();
     stack_slots.append({type_id, index});
     return index;
+}
+
+void Bytecode_Function::free_register(int64 reg)
+{
+    registers[reg] = true;
+}
+
+uint32 Bytecode_Machine::find_or_insert_bytes_to_data_section(const uint8 *bytes, usize count)
+{
+    uint8 *start = memory[DATA];
+    uint8 *head  = start;
+    uint8 *tail  = head + data_section.count();
+
+    while (head != tail) {
+        if (tail - head < count) break;
+        if (memcmp(head, bytes, count) == 0) {
+            uint32 offset = head - start;
+            return offset;
+        }
+        head += 1;
+    }
+
+    usize offset = data_section.count();
+    data_section.append_range(bytes, count);
+    memory[DATA] = data_section.data();
+    return offset;
+}
+
+void Bytecode_Machine::append_to_data_section(const uint8 *bytes, usize count)
+{
+    data_section.append_range(bytes, count);
+    memory[DATA] = data_section.data();
 }

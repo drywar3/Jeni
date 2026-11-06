@@ -89,6 +89,16 @@ ast::Expression *parse_primary(Parser &p,     bool is_within_typehint_context)
         );
     }
 
+    if (auto tok = p->try_expect(LIT_Cstring)) {
+        auto view = p->slice_out(tok->locus);
+        view = view.substr(2, view.length() - 3);
+        return allocate<ast::expr::CString>(
+            p.allocator(),
+            tok->locus,
+            view
+        );
+    }
+
     // handle `true` and `false`.
     {
         if (auto tok = p->try_expect_one_of({LIT_True, LIT_False})) {

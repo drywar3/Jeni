@@ -19,7 +19,7 @@ struct Bytecode_Compiler {
     void compile_program(const ast::Program &program);
 
     void compile_statement(ast::Statement *stmt);
-    uint32 compile_expression(ast::Expression *expr);
+    uint32 compile_expression(ast::Expression *expr, bool disregard_result = false);
 
     void compile_function_decl_to_bytecode(sema::Symbol_Proxy symbol, ast::stmt::Function_Declaration *decl_fn, bc::Prototype prototype);
     void compile_block_to_bytecode(ast::stmt::Block *block);

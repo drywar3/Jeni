@@ -19,6 +19,8 @@ Semantic_Storage::Semantic_Storage(Alloc alloc)
       prots(alloc)
 {
     initialize_builtin_types(*this, alloc);
+    char_pointer_type = allocate<Pointer_Type>(alloc, type_id::UINT8, Mutability::Constant);
+    types.add_value(char_pointer_type);
 }
 
 void initialize_builtin_types(Semantic_Storage &store, Alloc alloc)

@@ -32,10 +32,13 @@ namespace sema
 
         bool analyze();
         void add_worker(Symbol_Id symbol_id, Worker worker);
+        void wake_up_workers(Symbol_Id symbol_id);
 
         //----------------------scope utilities----------------------
         Scope_Id enter_scope(Scope::Kind kind = Scope::Block);
         void exit_scope();
+        void set_scope_at_locus(Locus locus, Scope_Id scope_id);
+        Scope_Id get_scope_at_locus(Locus locus);
         auto find_last_scope_of_kind(Scope::Kind kind, auto &&fn)
             -> Opt<decltype(fn(this, (Scope*)nullptr))>
         {
@@ -73,8 +76,8 @@ namespace sema
         bool discover_function_decl(ast::Statement *stmt);
 
         //----------------------------checkers----------------------------
-        Worker_Status check_statement (Worker_Payload payload, bool is_resumption);
-        Worker_Status check_expression(Worker_Payload payload, bool is_resumption);
+        Worker_Status check_statement (void *payload, bool is_resumption);
+        Worker_Status check_expression(void *payload, bool is_resumption);
 
         Worker_Status check_variable_declaration(ast::Statement *stmt, bool is_resumption);
         Worker_Status check_function_declaration(ast::Statement *stmt, bool is_resumption);

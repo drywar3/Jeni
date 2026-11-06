@@ -30,6 +30,8 @@ namespace sema
         Block_Save_Point bsp;
         Prototype_Storage prots;
 
+        Type *char_pointer_type;
+
         Semantic_Storage(Alloc alloc);
     };
 } // namespace sema

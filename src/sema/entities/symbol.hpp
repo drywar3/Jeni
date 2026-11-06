@@ -3,6 +3,7 @@
 #include "parser/locus.hpp"
 #include "sema/entities/id.hpp"
 #include "sema/entities/profile.hpp"
+#include "bc/stack_slot.hpp"
 
 namespace sema
 {
@@ -34,6 +35,7 @@ namespace sema
         Opt<sema::Type_Id>  type_id;
         Symbol_State   state;
         Profile        profile;
+        bc::Stack_Slot stack_slot;
 
         Symbol(Sv name, Locus locus, Scope_Id scope_id, Opt<Symbol_Id> def_ns, Opt<Type_Id> type_id, Symbol_State state);
 

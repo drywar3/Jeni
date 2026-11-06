@@ -1,5 +1,7 @@
 #include "sema/type/id.hpp"
 #include "sema/entities/type.hpp"
+#include "sema/entities/symbols.hpp"
+#include "sema/store.hpp"
 
 using namespace sema;
 
@@ -18,6 +20,12 @@ bool Type::operator==(const Type &other) const
             auto other_ptr = static_cast<const Function_Set_Type*>(&other);
             return self->symbol_id == other_ptr->symbol_id;
         }
+    case Kind::Function:
+        {
+            auto self      = static_cast<const Function_Prototype*>(this);
+            auto other_ptr = static_cast<const Function_Prototype*>(&other);
+            return *self == *other_ptr;
+        }
     // @TODO: don't default to return true.
     default: return true;
     }
@@ -32,6 +40,17 @@ String Type::display(Alloc a, Semantic_Storage *store)
     case Kind::Float32: return String::build(a, "float32");
     case Kind::Float64: return String::build(a, "float64");
     case Kind::Bool:    return String::build(a, "bool");
+    case Kind::Pointer:
+        {
+            auto pointer = static_cast<Pointer_Type*>(this);
+            auto inner   = store->types.at_index(usize(pointer->inner));
+            auto s = String::build(a, "*");
+            if (bool(pointer->access)) {
+                s.append_fmt("const ");
+            }
+            s.append_fmt("%s", inner->display(a, store).data());
+            return s;
+        } break;
     case Kind::Function_Set: MINI_UNREACHABLE();
     default: todo();
     }

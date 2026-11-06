@@ -24,11 +24,14 @@ bool Parser::token_can_begin_expr(Token token) const
 {
     switch (token.kind) {
         case Identifier:
+
         case LIT_Integer:
         case LIT_Float:
         case LIT_Char:
         case LIT_True:
         case LIT_False:
+        case LIT_Cstring:
+
         case SEP_Lbracket:
         case SEP_Lparen:
 
@@ -133,6 +136,10 @@ ast::Typehint *Parser::parse_typehint(bool emit_error)
         return allocate<Integer>(p.allocator(), tok->locus, true, Integer_Width::Int32);
     }
 
+    if (auto tok = p->try_expect(TK_Uint8)) {
+        return allocate<Integer>(p.allocator(), tok->locus, false, Integer_Width::Int8);
+    }
+
     if (auto tok = p->try_expect(TK_Float32)) {
         return allocate<Float>(p.allocator(), tok->locus, Float_Width::F32);
     }
@@ -144,6 +151,8 @@ ast::Typehint *Parser::parse_typehint(bool emit_error)
     if (auto tok = p->try_expect(TK_Bool)) {
         return allocate<Boolean>(p.allocator(), tok->locus);
     }
+
+    todo("%d", p.current_.kind);
 
     if (emit_error)
         p.compiler->report_error(

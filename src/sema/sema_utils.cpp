@@ -97,3 +97,55 @@ void sema::Semantic_Context::exit_scope()
     if (!scope_object.parent) current_scope = global_scope;
     else                      current_scope = *scope_object.parent;
 }
+
+void sema::Semantic_Context::wake_up_workers(Symbol_Id symbol_id)
+{
+    if (!workers.contains(symbol_id)) return;
+    auto &worker_list = workers[symbol_id];
+
+    Symbol *symbol = store->symbols.at_index(usize(symbol_id));
+    // if the symbol we were waiting for is resolved,
+    // fire off all the workers.
+    if (symbol->state == Symbol_State::Resolved) {
+        Arr<std::pair<Symbol_Id, Worker>> new_workers{allocator};
+        Arr<usize> remove_list{allocator};
+        for (usize n = 0; n < worker_list.count(); n++) {
+            Worker worker = worker_list[n];
+            Worker_Status status = worker.resume(store);
+            //todo("%.*s", SVARG(symbol->name.base()));
+            if (status == Worker_Status::Pending) {
+                for (auto new_id : status.waiting_on.iter()) {
+                    new_workers.append({new_id, Worker(id, status.working_scope, worker.payload, worker.function)});
+                    //add_worker(symbol_id, Worker(id, status.working_scope, worker.payload, worker.function));
+                }
+            } else {
+                remove_list.append(n);
+            }
+        }
+
+        for (auto index : remove_list.iter()) worker_list.remove(index);
+
+        for (auto [new_id, worker] : new_workers.iter()) {
+            add_worker(new_id, worker);
+        }
+
+        // all workers on this symbol have finished. so remove it.
+        if (worker_list.count() == 0) {
+            workers.erase(symbol_id);
+        }
+    } else if (symbol->state == Symbol_State::Failed) {
+        // if it failed, then there is no need in retrying workers for it.
+        workers.erase(symbol_id);
+        return;
+    } else if (symbol->state == Symbol_State::Waiting) todo();
+}
+
+void sema::Semantic_Context::set_scope_at_locus(Locus locus, Scope_Id scope_id)
+{
+    store->scopes.link(locus, usize(scope_id));
+}
+
+sema::Scope_Id sema::Semantic_Context::get_scope_at_locus(Locus locus)
+{
+    return Scope_Id(*store->scopes.get_id(locus));
+}
