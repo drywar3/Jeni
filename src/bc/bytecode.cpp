@@ -151,7 +151,6 @@ Call_Frame Bytecode_Machine::create_call_frame(Call_Frame &parent, Bytecode_Func
     frame.bcfn = bcfn;
     frame.registers   = MINI_ALLOC_MANY(allocator, Register, register_count);
     frame.return_type = return_type;
-
     usize size = compiler->store.layout.get_size(return_type);
     frame.return_slot = parent.stack_top;
     frame.stack_top   = parent.stack_top + size;
@@ -186,11 +185,11 @@ usize Bytecode_Machine::eval(ast::Expression *expression, Bytecode_Compiler &bc)
     do_function(frame, fn);
 
     if (expression->kind == ast::Expression_Kind::Function_Call) {
-        int32 *call_result = (int32*)frame.registers[result].pointer_value;
+        write_to_mem_from_register(frame, frame.return_slot, result, type);
         usize value_id    = alloc_value({
             .kind = Bytecode_Value::Bytes,
             .bytes = {
-                .ptr  = (uint8*)call_result,
+                .ptr  = frame.return_slot,
                 .size = compiler->store.layout.get_size(type),
             },
         });
@@ -227,7 +226,7 @@ int Bytecode_Machine::step(Call_Frame &frame, Bytecode_Instruction inst)
             auto global_id  = frame.registers[callee_reg].int_value;
             auto &global = globals[global_id];
             assert(functions.contains(global.symbol_id), "cannot find function");
-            assert(!prep_call_frame.has_value(), "unfinished PREP_CALL: %s", prep_call_frame->bcfn->name.data());
+            assert(!prep_call_frame.has_value(), "unfinished PREP_CALL (in %s): %s", frame.bcfn->name.data(), prep_call_frame->bcfn->name.data());
             auto function = *functions.find(global.symbol_id);
             prep_call_frame = create_call_frame(frame, function, function->registers.count(), result_type);
             prep_call_frame->return_register = result_reg;
@@ -238,11 +237,10 @@ int Bytecode_Machine::step(Call_Frame &frame, Bytecode_Instruction inst)
         {
             assert(prep_call_frame.has_value(), "cannot DO_CALL without call frame");
             Call_Frame new_frame = *prep_call_frame;
+            prep_call_frame = None;
             do_function(new_frame, *new_frame.bcfn);
             auto dst = new_frame.return_register;
-            frame.registers[dst].pointer_value = (char*)new_frame.return_slot;
-            //memory[STACK] = new_frame.return_slot;
-            prep_call_frame = None;
+            write_to_register_from_mem(frame, new_frame.return_slot, dst, new_frame.return_type);
             return OK;
         } break;
 
@@ -260,11 +258,11 @@ int Bytecode_Machine::step(Call_Frame &frame, Bytecode_Instruction inst)
 
     case ALLOC_STACK:
         {
-            auto type   = *inst.type_id;
-            uint8 *stack_top = frame.stack_top;
-            usize size_of_type = layout->get_size(type);
-            assert(stack_top - stack < STACK_SIZE, "stack overflow");
-            frame.stack_top += size_of_type; // @Check
+            // auto type   = *inst.type_id;
+            // uint8 *stack_top = frame.stack_top;
+            // usize size_of_type = layout->get_size(type);
+            // assert(stack_top - stack < STACK_SIZE, "stack overflow");
+            // frame.stack_top += size_of_type; // @Check
             return OK;
         } break;
 

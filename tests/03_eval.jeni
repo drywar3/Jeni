@@ -1,13 +1,15 @@
 
-func get_integer(x: int) : int {
-    const y = x;
-    const z = 10;
-    return 10*y+2;
+func getint2(x: int, y: int) : int {
+     return x + y;
+}
+
+func get_integer(x: int, y: int, z: int) : int {
+    return getint2(x, y) * z;
 }
 
 func main() : int {
-    const y = eval get_integer(1);
-    const x = get_integer(1);
+    const x = get_integer(1, 2, 2);
+    const y = eval get_integer(10, 2, 10);
     printf(c"y = %d\n", y);
     printf(c"x = %d\n", x);
     return 0;

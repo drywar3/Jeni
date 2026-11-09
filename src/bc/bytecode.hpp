@@ -23,7 +23,7 @@ namespace bc {
         bool  free = true;
         int64 int_value;
         float32 float_value;
-        char *pointer_value;
+        uint8 *pointer_value;
     };
 
     enum Block {
