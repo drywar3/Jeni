@@ -98,5 +98,10 @@ namespace ast
 
              Function_Call(Locus locus, Expression *callee, Args args);
          };
+
+         struct Eval : Expression {
+             Expression *expr;
+             Eval(Locus locus, Expression *expr);
+         };
     } // namespace expr
 } // namespace ast

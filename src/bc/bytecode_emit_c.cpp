@@ -25,8 +25,9 @@ struct Context {
     Bytecode_Function *function = nullptr;
     Compiler_Context &cc;
     Opt<Call_Context> call_context = None;
+    Bytecode_Machine *m;
 
-    Context(Alloc a, Compiler_Context &cc) : headers(a), definitions(a), code(a), cc(cc) {}
+    Context(Alloc a, Compiler_Context &cc, Bytecode_Machine *m) : headers(a), definitions(a), code(a), cc(cc), m(m) {}
 
     String *buffer = &headers;
 
@@ -55,7 +56,7 @@ void emit_register_type(Context &c)
 
 String Bytecode_Machine::emit_to_c_code(Compiler_Context &compiler)
 {
-    Context c{allocator, compiler};
+    Context c{allocator, compiler, this};
     emit_std_headers(c);
     c.swap(c.definitions);
     emit(c, "extern unsigned char jeni_data_section[];\n");
@@ -132,18 +133,29 @@ void emit_register(Context &c, Type_Id type_id, uint32 reg, bool emit_as_lvalue 
     emit(c, "r%d.%s", reg, field);
 }
 
+char opcode_char(Opcode op)
+{
+    switch (op) {
+    case ADD: return '+';
+    case SUB: return '-';
+    case MUL: return '*';
+    case DIV: return '/';
+    default: MINI_UNREACHABLE();
+    }
+}
+
 void emit_instruction(Context &c, Bytecode_Machine *m, Bytecode_Instruction &inst)
 {
     switch (inst.opcode) {
     case LOAD_PARAM:
         {
             auto param_index = inst.dst;
-            auto stack_index = inst.arg1;
+            auto stack_index = inst.arg2;
             auto param_type  = *inst.type_id;
             emit(c, TAB"auto sp%zu = (", stack_index);
             emit_type(c, param_type);
-            emit(c, "*)&sp%zu_slot;\n", stack_index);
-            emit(c, TAB"*sp%zu = p%zu;\n", stack_index, param_index);
+            emit(c, "*)&sp%zu_slot;" TAB "// LOAD_PARAM(1)\n", stack_index);
+            emit(c, TAB"*sp%zu = p%zu;" TAB "// LOAD_PARAM(2)\n", stack_index, param_index);
         } break;
     case RETURN:
         {
@@ -172,7 +184,7 @@ void emit_instruction(Context &c, Bytecode_Machine *m, Bytecode_Instruction &ins
             auto index = inst.arg3;
             emit(c, TAB"*sp%lld = ", index);
             emit_register(c, type, reg);
-            emit(c, ";\n");
+            emit(c, ";" TAB "// STORE_STACK\n");
         } break;
     case PREP_CALL:
         {
@@ -220,14 +232,16 @@ void emit_instruction(Context &c, Bytecode_Machine *m, Bytecode_Instruction &ins
             }
             emit(c, ");\n");
         } break;
-    case LOAD_CONSTANT:
+    case LOAD_GLOBAL:
         {
-            Sv constant_name   = inst.str;
+            usize global_id    = inst.arg1;
             auto result_reg    = inst.dst;
             auto constant_type = *inst.type_id;
+
+            Global &global = c.m->globals[global_id];
             emit(c, TAB);
             emit_register(c, constant_type, result_reg, true);
-            emit(c, " = (char*)%.*s;\n", SVARG(constant_name.base()));
+            emit(c, " = (char*)%.*s;\n", SVARG(global.name.base()));
         } break;
     case LOAD_STACK:
         {
@@ -238,7 +252,7 @@ void emit_instruction(Context &c, Bytecode_Machine *m, Bytecode_Instruction &ins
             emit_register(c, type, dst, true);
             emit(c, " = (");
             emit_type(c, type);
-            emit(c, ")*sp%lld;\n", index);
+            emit(c, ")*sp%lld;" TAB "// LOAD_STACK\n", index);
         } break;
 
     case LOAD_DATA:
@@ -248,14 +262,64 @@ void emit_instruction(Context &c, Bytecode_Machine *m, Bytecode_Instruction &ins
             auto offset = inst.arg1;
             emit(c, TAB);
             emit_register(c, type, dst, true);
-            emit(c, " = (char*)&jeni_data_section[%lld];\n", offset);
+            emit(c, " = (char*)&jeni_data_section[%lld];" TAB "// LOAD_DATA\n", offset);
         } break;
 
     case ALLOC_STACK:
         {
             auto index = inst.arg2;
             emit(c, TAB);
-            emit(c, "auto sp%lld = &sp%lld_slot;\n", index, index);
+            emit(c, "auto sp%lld = &sp%lld_slot;" TAB "// ALLOC_STACK\n", index, index);
+        } break;
+
+    case MUL:
+    case ADD:
+    case SUB:
+    case DIV:
+        {
+            auto type = *inst.type_id;
+            auto dst = inst.dst;
+            auto left = inst.arg1;
+            auto right = inst.arg2;
+            emit(c, TAB);
+            if (dst != -1) {
+                emit_register(c, type, dst, true);
+                emit(c, " = ");
+            }
+            emit(c, "("); emit_type(c, type); emit(c, ")");
+            emit(c, "(");
+            emit_register(c, type, left, false);
+            emit(c, "%c", opcode_char(inst.opcode));
+            emit_register(c, type, right, false);
+            emit(c, ");\n");
+        } break;
+
+    case LOAD_VALUE:
+        {
+            auto type = *inst.type_id;
+            auto dst  = inst.dst;
+            auto id = inst.arg1;
+            auto value = c.m->values[id];
+            emit(c, TAB);
+            emit_register(c, type, dst, true);
+            emit(c, " = ");
+            switch (value.kind) {
+            case Bytecode_Value::Integer:
+                emit(c, "%lld", value.integer);
+                break;
+            case Bytecode_Value::Bytes:
+                {
+                    auto bytes = value.bytes;
+                    emit(c, "*("); emit_type(c, type); emit(c, "*)");
+                    emit(c, "(unsigned char[]){");
+                    for (usize n = 0; n < bytes.size; n++) {
+                        if (n != 0) emit(c, ", ");
+                        emit(c, "0x%x", bytes.ptr[n]);
+                    }
+                    emit(c, "};\n");
+                } break;
+            default: todo();
+            }
         } break;
     default: todo();
     }
@@ -288,7 +352,7 @@ void emit_function_prelude(Context &c, Bytecode_Function *fn)
 
 void emit_function(Context &c, Bytecode_Machine *m, Bytecode_Function *fn)
 {
-    Symbol *symbol = c.cc.store.symbols.at_index(usize(fn->id));
+    //Symbol *symbol = c.cc.store.symbols.at_index(usize(fn->id));
     Prototype prot = fn->prototype;
 
     bool is_extern_defn = fn->flags & BCFN_IS_EXTERNALLY_DEFINED;

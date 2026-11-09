@@ -101,6 +101,7 @@ void sema::Semantic_Context::exit_scope()
 void sema::Semantic_Context::wake_up_workers(Symbol_Id symbol_id)
 {
     if (!workers.contains(symbol_id)) return;
+
     auto &worker_list = workers[symbol_id];
 
     Symbol *symbol = store->symbols.at_index(usize(symbol_id));
@@ -125,16 +126,18 @@ void sema::Semantic_Context::wake_up_workers(Symbol_Id symbol_id)
 
         for (auto index : remove_list.iter()) worker_list.remove(index);
 
+        // all workers on this symbol have finished. so remove it.
+        if (worker_list.count() == 0) {
+            worker_list.clear();
+            workers.erase(symbol_id);
+        }
+
         for (auto [new_id, worker] : new_workers.iter()) {
             add_worker(new_id, worker);
         }
-
-        // all workers on this symbol have finished. so remove it.
-        if (worker_list.count() == 0) {
-            workers.erase(symbol_id);
-        }
     } else if (symbol->state == Symbol_State::Failed) {
         // if it failed, then there is no need in retrying workers for it.
+        worker_list.clear();
         workers.erase(symbol_id);
         return;
     } else if (symbol->state == Symbol_State::Waiting) todo();

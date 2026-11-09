@@ -11,4 +11,10 @@ namespace bc
         usize         offset;
     };
 
+
+    struct Bytecode_Info {
+        Stack_Slot stack_slot;
+        usize      global_id;
+    };
+
 } // namespace bc

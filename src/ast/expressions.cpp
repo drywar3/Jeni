@@ -14,3 +14,9 @@ Function_Call::Function_Call(Locus locus, Expression *callee, Args args)
       args(args)
 {
 }
+
+Eval::Eval(Locus locus, Expression *expr)
+    : Expression(locus, Expression_Kind::Eval),
+      expr(expr)
+{
+}

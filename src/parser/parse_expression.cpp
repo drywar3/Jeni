@@ -38,8 +38,42 @@ ast::Expression *Parser::parse_expression()
     return parse_relational(p, last_state_is(State::Typehint_Expression));
 }
 
-ast::Expression *parse_primary(Parser &p,     bool is_within_typehint_context)
+bool unescape_string(Parser &p, Locus locus, Sv sv, String &out) {
+    for (usize n = 0; n < sv.length(); n++) {
+        if (sv[n] == '\\') {
+            if (n >= sv.length() - 1) {
+                // @Todo : create a reasonable error code for this.
+                p.compiler->report_error(locus, "invalid escape seqeunce, `\\` in string literal", INVALID_TOKEN);
+                return false;
+            }
+            n += 1;
+            char ch = sv[n];
+            switch (ch) {
+            case 'n': out.append_fmt("\n"); break;
+            default:
+                // @Todo : create a reasonable error code for this.
+                p.compiler->report_error(
+                    locus,
+                    String::build(p.allocator(), "invalid escape seqeunce, `\\%c` in string literal", ch).data(),
+                    INVALID_TOKEN);
+                return false;
+            }
+        } else {
+            out.append_fmt("%c", sv[n]);
+        }
+    }
+    return true;
+}
+
+ast::Expression *parse_primary(Parser &p, bool is_within_typehint_context)
 {
+
+    if (auto tok = p->try_expect(KW_Eval); tok and !is_within_typehint_context) {
+        ast::Expression *expr = p.parse_expression();
+        if (expr->is_error()) return expr;
+        return allocate<ast::expr::Eval>(p.allocator(), tok->locus.merge(expr->locus), expr);
+    }
+
     if (auto tok = p->try_expect(LIT_Integer); tok and !is_within_typehint_context) {
         auto view = p->slice_out(tok->locus);
         if (tok->base == 8) MINI_TODO("handle base 8 integers");
@@ -92,10 +126,12 @@ ast::Expression *parse_primary(Parser &p,     bool is_within_typehint_context)
     if (auto tok = p->try_expect(LIT_Cstring)) {
         auto view = p->slice_out(tok->locus);
         view = view.substr(2, view.length() - 3);
+        String out{p.allocator()};
+        if (!unescape_string(p, tok->locus, view, out)) return allocate<ast::Error>(p.allocator(), p->currentl());
         return allocate<ast::expr::CString>(
             p.allocator(),
             tok->locus,
-            view
+            Sv(out.data())
         );
     }
 

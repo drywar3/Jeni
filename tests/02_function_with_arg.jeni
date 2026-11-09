@@ -23,11 +23,12 @@ func hello () {
     putchar('");
 }
 
-
 func main() : int {
+    const NEWLINE = 10;
     puts(c"Hello, World!");
-    printf(c"Hello World %d", 1);
-    return 10;
+    printf(c"Hello World\n");
+    printf(c"Hello World%c", NEWLINE);
+    return 0;
 }
 
 func puts(fmt: *const uint8) : int;

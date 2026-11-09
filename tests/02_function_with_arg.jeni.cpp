@@ -75,16 +75,24 @@ extern "C" int printf(const unsigned char* p0);
 
 extern "C" int main()
 {
-    _Register r0, r1;
+    _Register r0, r1, r2;
+    auto sp0_slot = (int){};
+    r0.int_value = 10;
+    auto sp0 = &sp0_slot;
+    *sp0 = (int)r0.int_value;
     r0.pointer_value = (char*)puts;
     r1.pointer_value = (char*)&jeni_data_section[0];
     ((int(*)(const unsigned char*))r0.pointer_value)((const unsigned char*)r1.pointer_value);
     r0.pointer_value = (char*)printf;
     r1.pointer_value = (char*)&jeni_data_section[14];
     ((int(*)(const unsigned char*))r0.pointer_value)((const unsigned char*)r1.pointer_value);
-    r0.int_value = 10;
+    r0.pointer_value = (char*)printf;
+    r1.pointer_value = (char*)&jeni_data_section[27];
+    r2.int_value = (int)*sp0;
+    ((int(*)(const unsigned char*, int))r0.pointer_value)((const unsigned char*)r1.pointer_value, (int)r2.int_value);
+    r0.int_value = 0;
     return (int)r0.int_value;
 }
 
 
-unsigned char jeni_data_section[] = {0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x2c, 0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64, 0x21, 0x0, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64, 0x20, 0x25, 0x64, 0x0, 0x0, 0x0};
+unsigned char jeni_data_section[] = {0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x2c, 0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64, 0x21, 0x0, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64, 0xa, 0x0, 0x48, 0x65, 0x6c, 0x6c, 0x6f, 0x20, 0x57, 0x6f, 0x72, 0x6c, 0x64, 0x25, 0x63, 0x0};

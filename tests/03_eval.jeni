@@ -1,0 +1,16 @@
+
+func get_integer(x: int) : int {
+    const y = x;
+    const z = 10;
+    return 10*y+2;
+}
+
+func main() : int {
+    const y = eval get_integer(1);
+    const x = get_integer(1);
+    printf(c"y = %d\n", y);
+    printf(c"x = %d\n", x);
+    return 0;
+}
+
+func printf(fmt: *const uint8, args...) : int;

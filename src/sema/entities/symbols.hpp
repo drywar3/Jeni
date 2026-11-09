@@ -11,12 +11,24 @@
 namespace sema
 {
     struct Semantic_Storage;
+    struct Semantic_Context;
+
+    struct Function_Arity {
+        usize min;
+        usize max;
+    };
+
     struct Function_Prototype : Type {
         sema::Type_Id return_type;
         Arr<sema::Type_Id> parameter_types;
+        Function_Arity arity;
+
+        int flags = 0;
 
         Function_Prototype() : Type(Kind::Function) {}
-        Function_Prototype(Alloc a) : Type(Kind::Function), parameter_types(a) {}
+        Function_Prototype(Alloc a, int flags = 0) : Type(Kind::Function), parameter_types(a), flags(flags) {}
+
+        Function_Prototype with_arity(Function_Arity arity) { this->arity = arity; return *this; }
 
         String to_string(Alloc a, Semantic_Storage *store);
 
@@ -27,6 +39,8 @@ namespace sema
             }
             return true;
         }
+
+        bool match(Semantic_Context &sema, const Function_Prototype &other);
     };
 
 }
@@ -76,5 +90,7 @@ namespace sema
         Symbol_Kind kind() const override {
             return Symbol_Kind::Function_Set;
         }
+
+        Opt<Function*> get_compatible_function(Semantic_Context &sema, const Function_Prototype &prototype);
     };
 } // namespace sema

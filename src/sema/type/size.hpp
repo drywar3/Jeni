@@ -1,10 +1,14 @@
 #pragma once
 
-#include "sema/store.hpp"
-#include "compiler.hpp"
+//#include "sema/store.hpp"
+//#include "compiler.hpp"
+#include "compiler/target.hpp"
+#include "sema/entities/id.hpp"
+#include "misc/map.hpp"
 
 namespace sema
 {
+    struct Semantic_Storage;
     struct Type_Layout {
         struct Entry {
             usize size;

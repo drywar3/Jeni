@@ -46,8 +46,10 @@ bool sema::Semantic_Context::analyze()
         if (!discover_statement(stmt)) return false;
     }
 
+    Locus locus;
     for (auto stmt : program.ast.iter()) {
         auto *node = static_cast<Node*>(stmt);
+        locus = stmt->locus;
         node->sema_id = id;
         Worker_Status status = check_statement(stmt, false);
         if (!status) {
@@ -58,15 +60,15 @@ bool sema::Semantic_Context::analyze()
                 for (const auto symbol_id : status.waiting_on.iter()) {
                     add_worker(symbol_id, Worker(id, status.working_scope, stmt, check_statement_worker));
                 }
-            };
+            }
         }
     }
 
-    while (!workers.empty()) {
-        for (auto &[symbol_id, _, _] : workers) {
-            wake_up_workers(symbol_id);
-        }
-    }
+    // while (!workers.empty()) {
+    //     for (auto &[symbol_id, _, _] : workers) {
+    //         wake_up_workers(symbol_id);
+    //     }
+    // }
 
     return !compiler->diagnostics.has_errors();
 }

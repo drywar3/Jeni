@@ -35,7 +35,7 @@ namespace sema
         Opt<sema::Type_Id>  type_id;
         Symbol_State   state;
         Profile        profile;
-        bc::Stack_Slot stack_slot;
+        bc::Bytecode_Info bc_info;
 
         Symbol(Sv name, Locus locus, Scope_Id scope_id, Opt<Symbol_Id> def_ns, Opt<Type_Id> type_id, Symbol_State state);
 

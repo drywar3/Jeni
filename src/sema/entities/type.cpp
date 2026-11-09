@@ -51,8 +51,13 @@ String Type::display(Alloc a, Semantic_Storage *store)
             s.append_fmt("%s", inner->display(a, store).data());
             return s;
         } break;
-    case Kind::Function_Set: MINI_UNREACHABLE();
-    default: todo();
+    case Kind::Function_Set: return String::build(a, "<:function set:>");
+    case Kind::Function:
+        {
+            auto *prototype = static_cast<Function_Prototype*>(this);
+            return prototype->to_string(a, store);
+        } break;
+    default: return String::build(a, "<:unknown:>");
     }
 }
 

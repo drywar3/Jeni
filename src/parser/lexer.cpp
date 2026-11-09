@@ -36,6 +36,7 @@ static const Token_List KEYWORDS = {
     {"struct", KW_Struct},     {"type", KW_Type},
     {"enum", KW_Enum},         {"using", KW_Using},
     {"return", KW_Return},     {"move", KW_Move},
+    {"eval", KW_Eval},
 
     {"int", TK_Int},           {"int8", TK_Int8},
     {"uint8", TK_Uint8},       {"int16", TK_Int16},

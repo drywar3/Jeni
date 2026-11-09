@@ -17,8 +17,8 @@ Target Target::x86_64_linux()
 
 Compiler_Context::Compiler_Context(Alloc a, Target target)
     : target(target), allocator(a), sources(a), programs(a),
-      diagnostics(a, 10, 10), store(a),
-      machine(a), bc(this)
+      diagnostics(a, 10, 10), store(a, target),
+      machine(a, this), bc(this)
 {
 }
 

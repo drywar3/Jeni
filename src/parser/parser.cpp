@@ -23,6 +23,7 @@ bool Parser::is_done() const
 bool Parser::token_can_begin_expr(Token token) const
 {
     switch (token.kind) {
+        case KW_Eval:
         case Identifier:
 
         case LIT_Integer:

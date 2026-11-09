@@ -28,6 +28,7 @@ target_link_libraries(Jeni_Compiler PRIVATE
 target_compile_options(Jeni_Compiler PRIVATE
     -Wall
     -Wno-format
+    -freflection
 )
 
 set_target_properties(Jeni_Compiler PROPERTIES

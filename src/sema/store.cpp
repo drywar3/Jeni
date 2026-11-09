@@ -10,13 +10,14 @@ using namespace sema;
 
 static void initialize_builtin_types(Semantic_Storage &store, Alloc alloc);
 
-Semantic_Storage::Semantic_Storage(Alloc alloc)
+Semantic_Storage::Semantic_Storage(Alloc alloc, Target target)
     : symbols(alloc),
       types(alloc),
       scopes(alloc),
       semas(alloc),
       bsp(alloc),
-      prots(alloc)
+      prots(alloc),
+      layout(alloc, this, target)
 {
     initialize_builtin_types(*this, alloc);
     char_pointer_type = allocate<Pointer_Type>(alloc, type_id::UINT8, Mutability::Constant);

@@ -161,6 +161,10 @@ Worker_Status check_function_prototype(
     }
 
     out.return_type = rtype_id;
+
+    // @Todo : to calculate the actual arity. there would need to be support for default arguments.
+    usize parameter_count = parameters.count();
+    out = out.with_arity({ .min = parameter_count, .max = parameter_count});
     return Worker_Status::Done;
 }
 
@@ -182,7 +186,16 @@ Worker_Status check_function_declaration_worker(Semantic_Context &sema, void *pa
         if (!body_status) {
             if (body_status == Worker_Status::Failed) {
                 symbol->state = Symbol_State::Failed;
-            } else symbol->state = Symbol_State::Unresolved;
+            } else {
+                for (const auto symbol_id : body_status.waiting_on.iter()) {
+                    sema.add_worker(symbol_id, Worker(sema.id,
+                                                      body_status.working_scope,
+                                                      stmt,
+                                                      check_function_declaration_worker));
+                }
+                symbol->state = Symbol_State::Unresolved;
+                return Worker_Status::pending(sema.allocator);
+            }
             return body_status;
         }
     }
@@ -223,7 +236,7 @@ Worker_Status Semantic_Context::check_function_declaration(ast::Statement *stmt,
         exit_scope();
     };
 
-    sema::Function_Prototype prototype{allocator};
+    sema::Function_Prototype prototype{allocator, ast_prototype.flags};
     if (auto s = check_function_prototype(*this, ast_prototype, symbol, prototype); !s) {
         symbol->state = (s == Worker_Status::Failed)
                       ? Symbol_State::Failed

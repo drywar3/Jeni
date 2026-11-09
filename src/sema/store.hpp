@@ -6,6 +6,8 @@
 #include "sema/entities/type.hpp"
 #include "sema/entities/scope.hpp"
 #include "sema/entities/symbols.hpp"
+#include "sema/type/size.hpp"
+#include "compiler/target.hpp"
 
 namespace sema
 {
@@ -29,9 +31,10 @@ namespace sema
         Semantic_Pool  semas;
         Block_Save_Point bsp;
         Prototype_Storage prots;
+        Type_Layout layout;
 
         Type *char_pointer_type;
 
-        Semantic_Storage(Alloc alloc);
+        Semantic_Storage(Alloc alloc, Target target);
     };
 } // namespace sema

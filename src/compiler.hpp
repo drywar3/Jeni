@@ -5,30 +5,10 @@
 #include "ast/program.hpp"
 #include "diagnostics.hpp"
 #include "compiler/target.hpp"
-#include "bc/bytecode.hpp"
 #include "bc/bytecode_compiler.hpp"
+#include "bc/bytecode.hpp"
 
 using Program_Map = HashMap<Source_Id, ast::Program>;
-
-enum Architecture {
-    X86_64,
-    AARCH64,
-};
-
-enum Os {
-    MACOS,
-    LINUX,
-    WINDOWS,
-};
-
-struct Target {
-    Architecture arch;
-    Os os;
-    usize pointer_size;
-    Sv triple;
-
-    static Target x86_64_linux();
-};
 
 struct Compiler_Context {
     Target          target;

@@ -25,6 +25,7 @@ void compile_return_statement(Bytecode_Compiler &bc, Statement *stmt);
 
 int64 compile_function_call_to_bytecode(Bytecode_Compiler &bc, Expression *expr, bool disregard_result);
 uint32 compile_identifier_to_bytecode(Bytecode_Compiler &bc, Expression *expr);
+uint32 compile_eval_expression(Bytecode_Compiler &bc, Expression *expr, bool disregard_result);
 
 Global_Initializer compile_global_constant_expression(Bytecode_Compiler &bc, Expression *expr);
 
@@ -47,7 +48,7 @@ uint32 Bytecode_Compiler::compile_expression(ast::Expression *expr, bool disrega
     switch (expr->kind) {
     case Expression_Kind::Integer:
         {
-            uint32 reg   = -1;
+            Reg reg   = -1;
             if (!disregard_result) reg = current_function->get_register();
             auto integer = static_cast<expr::Integer*>(expr);
             current_function->emit(STORE_REG_IMM, type_id, reg, 0, 0, 0, integer->value);
@@ -55,7 +56,7 @@ uint32 Bytecode_Compiler::compile_expression(ast::Expression *expr, bool disrega
         }
     case Expression_Kind::CString:
         {
-            uint32 reg   = -1;
+            Reg reg   = -1;
             if (!disregard_result) reg = current_function->get_register();
             auto cstring = static_cast<expr::CString*>(expr);
             const uint8 *bytes = reinterpret_cast<const uint8*>(cstring->value.data());
@@ -73,13 +74,38 @@ uint32 Bytecode_Compiler::compile_expression(ast::Expression *expr, bool disrega
         }
     case Expression_Kind::Char:
         {
-            uint32 reg = -1;
+            Reg reg = -1;
             if (!disregard_result) reg = current_function->get_register();
             auto char_expr = static_cast<expr::Char*>(expr);
             current_function->emit(STORE_REG_IMM, type_id, reg, 0, 0, 0, (uint8)char_expr->value);
             return reg;
         }
     case Expression_Kind::Function_Call: return compile_function_call_to_bytecode(*this, expr, disregard_result);
+    case Expression_Kind::Eval:          return compile_eval_expression(*this, expr, disregard_result);
+    case Expression_Kind::Binary_Operation:
+        {
+            Reg reg = -1;
+            if (!disregard_result) reg = current_function->get_register();
+            auto binop = static_cast<ast::expr::Binary_Operation*>(expr);
+            auto left = binop->left;
+            auto right = binop->right;
+            auto left_reg = compile_expression(left);
+            auto right_reg = compile_expression(right);
+            auto type = binop->resolved_type;
+
+            // @Todo : factor this out.
+            Opcode op;
+            switch (binop->op) {
+            case Operator::Add:       op = ADD; break;
+            case Operator::Minus:     op = SUB; break;
+            case Operator::Star:      op = MUL; break;
+            case Operator::Division:  op = DIV; break;
+            default: todo();
+            }
+
+            current_function->emit(op, type, reg, left_reg, right_reg);
+            return reg;
+        } break;
     default: todo("%d", expr->kind);
     }
 }
@@ -98,13 +124,13 @@ void compile_variable_declaration(Bytecode_Compiler &bc, Statement *stmt)
         //compile_global_constant_expression(bc, variable->initializer);
         todo();
     } else {
-        uint32 stack_index = bc.current_function->alloc_stack_slot(type_id);
-        symbol->stack_slot.index = stack_index;
+        auto stack_slot = bc.current_function->alloc_stack_slot(&bc.store.layout, type_id);
+        symbol->bc_info.stack_slot = stack_slot;
 
         assert(variable->initializer,);
         auto result = bc.compile_expression(variable->initializer);
-        bc.current_function->emit(ALLOC_STACK, type_id, 0, 0, stack_index);
-        bc.current_function->emit(STORE_STACK, type_id, 0, result, 0, stack_index);
+        bc.current_function->emit(ALLOC_STACK, type_id, 0, stack_slot.offset, stack_slot.index);
+        bc.current_function->emit(STORE_STACK, type_id, 0, result, stack_slot.offset, stack_slot.index);
         bc.current_function->free_register(result);
         return;
     }
@@ -126,6 +152,15 @@ void Bytecode_Compiler::compile_function_decl_to_bytecode(
     ast::stmt::Function_Declaration *decl_fn,
     Prototype prototype)
 {
+    auto &sema = store.semas.get(decl_fn->sema_id); // @Todo : this will fail for function defined in body of another function
+    if (symbol->scope_id == sema.global_scope) {
+        symbol->bc_info.global_id = compiler->machine.add_global(
+            symbol->name,
+            *symbol->type_id,
+            symbol.get_id(),
+            true);
+    }
+
     Bytecode_Function *fn = allocate<Bytecode_Function>(
         allocator,
         allocator,
@@ -143,11 +178,11 @@ void Bytecode_Compiler::compile_function_decl_to_bytecode(
     if (decl_fn->body) {
         usize n = 0;
         for (const auto &param : decl_fn->prototype.parameters.iter()) {
-            auto type_id       = Type_Id(*store.types.get_id(param.name.locus));
-            uint32 stack_index = current_function->alloc_stack_slot(type_id);
-            auto symbol        = *store.symbols.find(param.name.locus);
-            symbol->stack_slot.index = stack_index;
-            current_function->emit(LOAD_PARAM, type_id, n, stack_index);
+            auto type_id = Type_Id(*store.types.get_id(param.name.locus));
+            auto stack_slot = current_function->alloc_stack_slot(&store.layout, type_id);
+            auto symbol = *store.symbols.find(param.name.locus);
+            symbol->bc_info.stack_slot = stack_slot;
+            current_function->emit(LOAD_PARAM, type_id, n, stack_slot.offset, stack_slot.index);
             n += 1;
         }
         compile_block_to_bytecode(static_cast<stmt::Block*>(decl_fn->body));
@@ -226,11 +261,23 @@ uint32 compile_identifier_to_bytecode(Bytecode_Compiler &bc, Expression *expr)
         auto symbol = *opt;
         if (sema.global_scope == symbol->scope_id) {
             assert(symbol->type_id, "");
-            bc.current_function->emit(LOAD_CONSTANT, symbol->type_id, reg, 0, 0, 0, 0, symbol->name);
+            bc.current_function->emit(LOAD_GLOBAL, symbol->type_id, reg, symbol->bc_info.global_id, 0, 0, 0);
         } else {
-            auto &stack_slot = symbol->stack_slot;
+            auto &stack_slot = symbol->bc_info.stack_slot;
+            //printf("VAR %.*s: %d\n", SV(symbol->name), stack_slot.offset);
             bc.current_function->emit(LOAD_STACK, symbol->type_id, reg, stack_slot.index, stack_slot.offset, 0);
         }
     } else MINI_UNREACHABLE();
+    return reg;
+}
+
+uint32 compile_eval_expression(Bytecode_Compiler &bc, Expression *expr, bool disregard_result)
+{
+    auto eval = static_cast<expr::Eval*>(expr);
+    auto eval_expr = eval->expr;
+    auto type = sema::Type_Id(*bc.store.types.get_id(eval->locus));
+    auto bcval = bc.compiler->machine.eval(eval_expr, bc);
+    auto reg = bc.current_function->get_register();
+    bc.current_function->emit(LOAD_VALUE, type, reg, bcval);
     return reg;
 }

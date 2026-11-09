@@ -1,4 +1,5 @@
 #include "sema/type/size.hpp"
+#include "sema/store.hpp"
 
 using namespace sema;
 
